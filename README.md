@@ -21,8 +21,7 @@ histoname bin low high (histoname has to match the corresponding branch name in 
 Example:<br>
 python makeHisto.py miniaod.root reco.root (option --help available)<br>
 <br>
-The logic of the script is the following: first make a map with entries corresponding to the same event from the two rootfiles.
-Then, for each in common, histograms are filled with entries corresponding to matched electrons.
+The logic of the script is the following: first make a map with entries corresponding to the same event from the two rootfiles. Then, for each in common, histograms are filled with entries corresponding to matched electrons.<br>
 <br>
 6 - The python script makePlot.py produces the comparison plots (both single png files and .root file with all the canvases).<br>
 Example:<br>
