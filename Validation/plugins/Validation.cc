@@ -34,7 +34,7 @@
 #include "DataFormats/PatCandidates/interface/Electron.h"
 
 #include "TFile.h"
-#include "TH1F.h"
+#include "TTree.h"
 
 #include <string>
 #include <map>
@@ -51,77 +51,79 @@ private:
   virtual void beginJob() override;
   virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
   virtual void endJob() override;
-  
-  std::map<std::string, TH1F*> plots;
-  bool isMini;
+
+
+  edm::EDGetTokenT<edm::View<reco::GsfElectron> > candSrcToken_;
+  TFile* file;
+  TTree* tree;
   std::string outputFileName;
+  Long_t run, event;
+  Int_t n;
+  Float_t pt[10], et[10], eta[10], sieie[10], phi[10];
+  Float_t fbrem[10], deta[10], dphi[10], eop[10];
 };
 
-Validation::Validation(const edm::ParameterSet& iConfig) {
+Validation::Validation(const edm::ParameterSet& iConfig) : 
+  candSrcToken_(consumes<edm::View<reco::GsfElectron> >(iConfig.getParameter<edm::InputTag>("electrons"))) {
 
-  isMini = iConfig.getParameter<bool>("isMini");
   outputFileName = iConfig.getParameter<std::string>("outputFileName");
-
-  plots.insert(std::make_pair("pt", new TH1F("pt",       "", 100, 0, 100)));
-  plots.insert(std::make_pair("et", new TH1F("et",       "", 100, 0, 100)));
-  plots.insert(std::make_pair("eta", new TH1F("eta",     "", 50, -2.5, 2.5)));
-  plots.insert(std::make_pair("sieie", new TH1F("sieie", "", 100, 0, 0.05)));
-  plots.insert(std::make_pair("fbrem", new TH1F("fbrem", "", 100, 0, 1)));
-  plots.insert(std::make_pair("deta", new TH1F("deta",   "", 100, -0.05, 0.05)));
-  plots.insert(std::make_pair("dphi", new TH1F("dphi",   "", 100, -0.1, 0.1)));
-  plots.insert(std::make_pair("eop", new TH1F("eop",     "", 100,  0.0, 5)));
 }
 
-
 Validation::~Validation() {
-
-  TFile* file = new TFile(outputFileName.c_str(), "recreate");
-  for(auto iterator = plots.begin(); iterator != plots.end(); iterator++)
-    iterator->second->Write();
+  
+  file->cd();
+  tree->Write();
   file->Close();
 }
 
 void Validation::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
-  if (!isMini) {
-    edm::Handle<reco::GsfElectronCollection> elH;
-    iEvent.getByLabel("gedGsfElectrons", elH);
-    
-    for (unsigned int i=0; i<elH->size(); i++) {
-      reco::GsfElectronRef e(elH, i);
-      
-      plots["pt"]->Fill(e->pt());
-      plots["et"]->Fill(e->superCluster()->energy()/cosh(e->superCluster()->eta()));
-      plots["eta"]->Fill(e->superCluster()->eta());
-      plots["sieie"]->Fill(e->full5x5_sigmaIetaIeta());
-      plots["fbrem"]->Fill(e->fbrem());
-      plots["deta"]->Fill(e->deltaEtaSuperClusterTrackAtVtx());
-      plots["dphi"]->Fill(e->deltaPhiSuperClusterTrackAtVtx());
-      plots["eop"]->Fill(e->eSuperClusterOverP());
-    }
-  } else {
+  run = iEvent.id().run();
+  event = iEvent.id().event();
 
-    edm::Handle<pat::ElectronCollection> elH;
-    iEvent.getByLabel("slimmedElectrons", elH);
+  edm::Handle<edm::View<reco::GsfElectron> > elH;
+  iEvent.getByToken(candSrcToken_, elH);
+
+  n = 0;
+  for(size_t i=0; i<elH->size(); ++i) {
+    edm::Ptr<reco::GsfElectron> e = elH->ptrAt(i);
     
-    for (unsigned int i=0; i<elH->size(); i++) {
-      pat::ElectronRef e(elH, i);
-      
-      plots["pt"]->Fill(e->pt());
-      plots["et"]->Fill(e->superCluster()->energy()/cosh(e->superCluster()->eta()));
-      plots["eta"]->Fill(e->superCluster()->eta());
-      plots["sieie"]->Fill(e->full5x5_sigmaIetaIeta());
-      plots["fbrem"]->Fill(e->fbrem());
-      plots["deta"]->Fill(e->deltaEtaSuperClusterTrackAtVtx());
-      plots["dphi"]->Fill(e->deltaPhiSuperClusterTrackAtVtx());
-      plots["eop"]->Fill(e->eSuperClusterOverP());
-    }
+    if (i==10)
+      continue;
+    
+    pt[i] = e->pt();
+    et[i] = e->superCluster()->energy()/cosh(e->superCluster()->eta());
+    eta[i] = e->superCluster()->eta();
+    phi[i] = e->superCluster()->phi();
+    sieie[i] = e->full5x5_sigmaIetaIeta();
+    fbrem[i] = e->fbrem();
+    deta[i] = e->deltaEtaSuperClusterTrackAtVtx();
+    dphi[i] = e->deltaPhiSuperClusterTrackAtVtx();
+    eop[i] = e->eSuperClusterOverP();
+
+    n++;
   }
+  
+  tree->Fill();
 }
 
 
-void Validation::beginJob()
-{}
+void Validation::beginJob() {
+  file = new TFile(outputFileName.c_str(), "recreate");
+  tree = new TTree("validation", "");
+  tree->Branch("run",   &run,   "run/L");
+  tree->Branch("event", &event, "event/L");
+  tree->Branch("n",     &n,     "n/I");
+  tree->Branch("pt",    &pt,    "pt[n]/F");
+  tree->Branch("et",    &et,    "et[n]/F");
+  tree->Branch("eta",   &eta,   "eta[n]/F");
+  tree->Branch("phi",   &phi,   "phi[n]/F");
+  tree->Branch("sieie", &sieie, "sieie[n]/F");
+  tree->Branch("fbrem", &fbrem, "fbrem[n]/F");
+  tree->Branch("deta",  &deta,  "deta[n]/F");
+  tree->Branch("dphi",  &dphi,  "dphi[n]/F");
+  tree->Branch("eop",   &eop,   "eop[n]/F");
+}
 
 void Validation::endJob() 
 {}
